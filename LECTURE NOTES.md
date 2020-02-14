@@ -325,3 +325,46 @@ BN avoids saturation, but maybe we want some saturation? Add parameters $\beta$ 
 ## Why should data everywhere in the network (and during preprocessing) be normalized?
 
 ![](normalize.png)
+
+## CNN Architectures
+
+<img src="comparison.png" style="zoom:14%;" />
+
+- **LeNet-5:** one of the first convnets that was successfully used in practice (standard conv, pool, ... , fc architecture)
+- **AlexNet:** first large scale convnet that won imagenet competition. Architecture similar to LeNet, first use of ReLU, used dropout & data augmentation, SGD+momentum, l2 weight decay, 7-CNN ensemble
+- **VGGNet:** (VGG16, VGG19 with 16 and 19 layers respectively), won imagenet, very small conv filters (3x3, 5x5). Stacker smaller filter are less computationally expensive but have the same effective receptive field.
+  <img src="vgg.png" style="zoom:13%;" />
+- **GoogLeNet:** 2014 winner, introduced inception module, no fc layers, 12x less parameters than alexnet
+- **ResNet:** much deeper than any previous model: 152 layers, 2015 winner, residual connections make it easier to recover the identity mapping (and more explicit), batchnorm, xavier:2 init, sgd+momentum, weight decay, no dropout used, learning rate schedule
+  <img src="resnet.png" style="zoom:13%;" />
+  - Residual Blocks and L2 normalization: l2 normalization encourages weights to be close to zero, this might not actually make a lot of sense with normal convnets but with resnets this causes unused layers to just become identity mappings. 
+  - Think of what happens with the gradient at "additive gates". The gradient is the sum of the gradients of both branches.
+
+Other architectures:
+
+- **"Network in Network"**
+- **"Identity Mappings in Deep Residual Networks":** improved ResNet block design
+- **"Wide Residual Networks":** Argues that residuals are the important factor, not depth. Uses wider residual blocks and fewer layers. 50-layer wide ResNet outperforms 152-layer original ResNet. Increasing width instead of depth is more computationally efficient (parallelizable)
+- **"Aggregated Residual Transformations for Deep Neural Networks (ResNeXt)":** multiple parallel pathways within a residual block
+  <img src="resnext.png" style="zoom:13%;" />
+- **"Deep Networks with Stochastic Depth":** Motivation: reduce vanishing gradients and training time through shallower networks during training. Like dropout but for entire layers. Use full network at test time.
+- **"FractalNet: Ultra-Deep Neural Networks without Residuals":** argues that key is transitioning effectively from shallow to deep and residual representations are not necessary. Fractal architecture with both shallow and deep paths to output. Trained with dropping out sub-paths, full network at test time
+  <img src="fractalnet.png" style="zoom:13%;" />
+- **DenseNet "Densely Connected Convolutional Networks":** dense blocks where each layer is connected to every other layer in feedforward fashion. Alleviates vanishing gradient, strengthens feature propagation, encourages feature reuse
+  <img src="densenet.png" style="zoom:13%;" />
+- **"SqueezeNet: AlexNet-level Accuracy with 50x Fewer Parameters and <0.5Mb Model Size"**  
+
+Number of layers of a network: generally given as the number of weight layers (conv, fc)
+
+## RNNs
+
+Current state $h_t$, state transition function $f_W$, current input $x_t$, current output $y_t$. The recurrence relation is of the form:
+
+$h_t=f_W(h_{t-1}, x_t)$
+
+for example:
+
+$h_t=\tanh(W_{hh}h_{t-1}+W_{xh}x_t)$
+$y_t=W_{hy}h_t$
+
+<img src="rnn.png" style="zoom:17%;" />
