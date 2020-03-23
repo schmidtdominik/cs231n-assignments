@@ -77,6 +77,17 @@ Problems:
 
 - doubles the number of weights and biases
 
+## Advanced Loss Functions [ref](http://cs231n.github.io/neural-networks-2/)
+
+### Hierarchical Softmax
+
+Decomposes labels into a tree, where each label is a path along the tree. A softmax classifier is trained at every node of the tree to select either the left or right branch.
+
+### Multi -label/-attribute/-tag loss
+
+- binary classifier for each category
+- logistic regression classifier for every attribute
+
 ## Preprocessing
 
 - zero-center and normalized (zero-center so that gradients are independent)
@@ -153,7 +164,7 @@ Some quotes:
 
 - Loss changes quickly in one direction and slowly in another (loss landscape looks like a taco shell) causes SGD to oscillate/jitter. Loss function is said to have a high *condition number* at this point (ratio of largest to smallest singular value of the Hessian matrix is large).
   Problem is worse in higher dimensions: If we have thousands or millions of singular values of the (much larger) hessian matrix the ratio of the largest to smallest one will be quite large.
-- saddle points/local minima, some/all components of the gradient are zero → network doesn't learn. In practice local minima/maxima are very rare, instead saddle points are much more problematic since they are very common and the network doesn't learn very fast if many of the gradient's components are zero.
+- saddle points/local minima, some/all components of the gradient are zero → network doesn't learn. In practice since in high-dim spaces local minima/maxima are very rare, saddle points are much more problematic since they are very common and the network doesn't learn very fast if many of the gradient's components are zero.
 
 ### SGD + Momentum, Nesterov Momentum
 
@@ -187,15 +198,17 @@ fixed the problem with AdaGrad by decaying the grad_squared term
 grad_squared = 0
 while True:
 	dx = compute_gradient(x)
-	grad_squared += decay_rate * grad_squared + (1-decay_rate)*dx*dx
+	grad_squared = decay_rate * grad_squared + (1-decay_rate)*dx*dx
 	x -= lr * dx / (np.sqrt(grad_squared) + 1e-7)
 ```
 
-### Adam (almost/reduced version)
+### Adam
 
 Momentum: build up velocity by adding averaging the gradients
 AdaGrad & RMSProp: build up estimate of squared gradient and divide by those
-Adam: combines both 
+Adam: combines both
+
+Adam without bias correction:
 
 ```python
 first_moment = 0
@@ -270,6 +283,14 @@ Alternatively:
 
 ## Regularization
 
+### L2 Regularization
+
+"The L2 regularization has the intuitive interpretation of heavily penalizing peaky weight vectors and preferring diffuse weight vectors. As we discussed in the Linear Classification section, due to multiplicative interactions between weights and inputs this has the appealing property of encouraging the network to use all of its inputs a little rather than some of its inputs a lot. Lastly, notice that during gradient descent parameter update, using the L2 regularization ultimately means that every weight is decayed linearly: `W += -lambda * W` towards zero."[ref](http://cs231n.github.io/neural-networks-2/#reg)
+
+### L1 Regularization
+
+"The L1 regularization has the intriguing property that it leads the weight vectors to become sparse during optimization (i.e. very close to exactly zero). In other words, neurons with L1 regularization end up using only a sparse subset of their most important inputs and become nearly invariant to the “noisy” inputs. In comparison, final weight vectors from L2 regularization are usually diffuse, small numbers. In practice, if you are not concerned with explicit feature selection, L2 regularization can be expected to give superior performance over L1." [ref](http://cs231n.github.io/neural-networks-2/#reg)
+
 ### Dropout
 
 - Distributes representation over many more neurons, network doesn't become dependent on any single neuron
@@ -281,6 +302,14 @@ At test time we want to remove the stochasticity of dropout:
 
 Instead approximate this by multiplying by dropout probability to rescale all activations.
 "Drop at train time, scale at test time"
+
+
+**Inverted Dropout:** Drop and scale at train time, don't do anything at test time.
+
+### Bias regularization
+
+Uncommon since bias parameters don't interact with the data multiplicatively, therefore don't control how individual data dimensions influence the final output
+
 
 ### Data Augmentation
 
@@ -367,4 +396,411 @@ for example:
 $h_t=\tanh(W_{hh}h_{t-1}+W_{xh}x_t)$
 $y_t=W_{hy}h_t$
 
+or with biases:
+
+$h_t=\tanh(W_{hh}h_{t-1}+W_{xh}x_t+b_h)$
+$y_t=W_{hy}h_t+b_y$
+
+(Using $\tanh$ generally causes the vanishing gradient problem but avoids the problem that unbounded activations in RNNs may explode[fn](https://www.reddit.com/r/MachineLearning/comments/9elxs8/d_why_do_you_use_tanh_in_a_rnn/)[fn](https://stackoverflow.com/questions/40761185/what-is-the-intuition-of-using-tanh-in-lstm))
+
 <img src="rnn.png" style="zoom:17%;" />
+
+One-to-one, one-to-many, many-to-one, many-to-one architectures
+**Sequence to sequence**: Many-to-one encoder + One-to-many decoder
+
+### Char-level RNN
+
+Generating text with a char-level rnn:
+
+- Feed initial primer/prompt through the network
+- At each step apply softmax to output and sample from the resulting probability distribution. Then feed this back into the network as input.
+  (Instead of sampling we could also take the argmax which may increase stability but reduces sample diversity)
+
+**[char-level rnn example: karpathy/min-char-rnn.py](https://gist.github.com/karpathy/d4dee566867f8291f086)**
+What are **unnormalized log probabilities** in min-char-rnn.py? [See this](https://stackoverflow.com/questions/48483980/why-explain-logit-as-unscaled-log-probabililty-in-sotfmax-cross-entropy-with-l)
+The softmax function is $\exp{z_k}/\sum_i{\exp{z_i}}$. $z$ are called the unnormalized log probabilities because they are not yet normalized by $\sum_i{\exp{z_i}}$ and $z_k = \log (\exp z_k)$.
+
+```python
+ys[t] = np.dot(Why, hs[t]) + by # unnormalized log probabilities for next chars
+    ps[t] = np.exp(ys[t]) / np.sum(np.exp(ys[t])) # probabilities for next chars
+```
+
+### Backpropagation through time
+
+Forward pass through entire sequence to compute loss, backward pass through entire sequence to compute gradient
+
+**Truncated BPTT:** Forward and backward through smaller chunks of the whole sequence (carry over hidden state from previous chunk to the beginning of the next chunk)
+
+![](tbptt.png)
+
+### Image Captioning
+
+Feed image through convnet (for example inceptionv4 without the last two layers) to get a feature vector $v$. Then run an rnn with the hidden state recurrence relation $h_t=\tanh(W_{hh}h_{t-1}+W_{xh}x_t+W_{ih}v)$ which incorporates the image information at every timestep. (Alternatively just use the feature vector as the initial hidden state of a language model rnn instead of the changed recurrence relation)
+
+### Image Captioning with Attention
+
+Instead of a single feature vector for the entire image, the convnet now extracts one feature vector for each patch of the image (e.g. 14x14 feature map for a 300x300px image), which is then fed into the lstm language model. In addition to the vocabulary prob. distribution the lstm model also outputs an (attention) distribution over all locations in the image. As the next input the model then receives the word/char sampled from the first prob. distr. and the (14x14) feature vector map weighted by the attention distribution.
+
+![](ic-att.png)
+
+
+**Soft-attention:** weighted combination of features from all image locations
+**Hard attention:** Select exactly one location in the image to look at
+
+![](hard-vs-soft-att.png)
+
+Hard-attention is not differentiable. "Need to use something slightly fancier than vanilla backprob."
+
+**Visual question answering**: use rnn to summarize question, cnn to summarize image, then use another rnn to generate answer based on both summaries.
+
+**Multilayer RNNs:** hidden states from one rnn (one for each timestep) are passed to another rnn
+
+### Vanilla RNN Gradient Flow
+
+When backpropping through matrix multiply with $W$ we multiply by the transpose of $W$. Therefore in a deep RNN when computing the gradient we have repeated multiplication by W and application of tanh. This could cause our gradients to either explode or vanish.
+If $W$ is a scalar then the gradient explodes or vanishes depending on whether $W > 1$ or $W < 1$. In the non-scalar case it depends on whether the largest singular value $> 1$ or $< 1$.
+
+Slight hack to fix exploding gradients: **gradient clipping**
+
+```python
+grad_norm = np.sum(grad*grad)
+if grad_norm > threshold:
+    grad *= (threshold / grad_norm)
+```
+
+(grad_norm might be the l2 norm)
+
+### Long Short Term Memory (LSTM)
+
+explicit forget, input, update gates
+
+better gradient flow: gradient flows through forget gate operation but this can be different for each timestep so we are not repeatedly multiplying by the same matrix. Also the forget gate is also in the range [0, 1] due to the sigmoid. Furthermore we have no non-linearity in the gradient path.
+
+**GRU:** LSTM variant
+
+## Detection and Segmentation
+
+![](detect_segm.png)
+
+### Semantic Segmentation
+
+Task: Classify every pixel of an image
+
+- Idea: Sliding window approach: Split image into tiny crops and classify each one by a conventional cnn classifier. Extremely inefficient
+  ![](segm2.png)
+- Idea: fully convolutional network. Very computationally expensive since we have convolutional layers with large height/width and depth. 
+  ![](segm1.png)
+- Solution: fully convolutional network with down- and upsampling
+  ![](segm3.png)
+
+### Upsampling Methods
+
+- **Unpooling** (nearest neighbor/bed of nails)
+  ![](unpooling.png)
+
+- **Max Unpooling**: similar to bed of nails unpooling above but we choose the spots based on the max-positions of a previous max-pooling layer. May improve image sharpness compared to e.g. nn unpooling. 
+
+  ![](max-unpooling.png)
+
+- **Transpose Convolution:** learnable upsampling
+  Forward pass of transpose convolution is the same operation as the backward pass of a normal convolution
+  Overlapping patches are added (not averaged) as a result of convolution's definition as a matrix multiplication
+
+  ![](transposed_conv.png)
+  Why is it called transposed conv?
+  ![](transposed_conv2.png)
+
+  Use for example 4x4 stride=2 transposed conv or 2x2 stride=2 transposed conv to avoid checkerboard artefacts (or resize conv).
+
+### Classification + Localization
+
+Task: single object classification + localization
+
+Solution: single convnet that outputs classification score (apply softmax loss) and (x, y, w, h) bounding box coordinates (apply l2/l1/any regression loss)
+
+![](class_local.png)
+
+**Multi-task loss:** weighted sum of multiple losses, each for a (possibly) different task. It's difficult to set this weighting parameter well because the parameter directly changes the value of the loss function (we can't just look which hyperparameter setting causes the loss after training to be the lowest because the parameter directly influences the loss scale). Recommended to find a different metric (accuracy,..) by which to judge the hyperparameter.
+
+**Regression loss:** basically any loss other than cross-entropy or softmax (e.g. l1, l2,..). Losses for continuous outputs rather than classification categories
+
+Related task: human pose estimation (e.g. network outputs the position of 14 fixed joints)
+
+### Object Detection
+
+Task: multiple objects, draw bounding boxes and classify
+
+Sliding window approach intractable since there are too many possible crops
+Solution: "Region Proposals" (for example with "Selective Search") to propose about 2000 possible image crops that could contain objects (high noise, but high recall).
+
+- **R-CNN:** create 2000 region proposals, scale them to a fixed size, apply convnet to classify and create bounding box correction
+  Problems: training (84h) and inference (47s/img with vgg16) is slow, using fixed instead of learned region proposals
+
+  ![](rcnn.png)
+
+- **Faster R-CNN**
+  Fixes main problem with R-CNN (slowness) by computing feature maps for the entire image first (and only once) and then takes crops from region proposals (which are based on the image) out of the computed feature maps.
+  Faster R-CNN's computation time is dominated by computing 2000 region proposals (0.32 sec excl, 2.3 sec incl region proposals)
+
+  ![](fastrcnn.png)
+
+- **Faster R-CNN:** insert Region Proposal Network to predict proposals from features
+  ![](fasterrcnn.png)
+
+- **YOLO / SSD (Single-Show MultiBox Detector)**
+  ![](yolo_ssd.png)
+
+Summary:
+![](obj_dete_summary.png)
+
+### Instance Segmentation
+
+**Mask R-CNN**
+
+classification + bounding box regression + segmentation mask for each region proposal
+
+![](mask-r-cnn.png)
+
+Can also do pose estimation
+
+![](mask-r-cnn-pose.png)
+
+## Visualizing & Understanding
+
+### Visualizing Convnet filter weights
+
+We can easily visualize the filters of the first layer of a convnet (these are the filter weights):
+
+![](vis_filters1.png)
+
+Visualizing later layers doesn't work well since activations in later layers are not in terms of pixels of the input image but rather in terms of activations of previous layers:
+
+![](vis_filters2.png)
+
+### Maximally activating patches
+
+One way to visualize which input images maximally excite a specific neuron is to iterate over a dataset and look for the image that maximally excites that neuron.
+
+![](max-act-patch.png)
+
+### Cluster by L2-nn in feature space
+
+We can also cluster similar images from a dataset by looking for l2-nn in feature space. L2 dist in feature space is related to semantic difference, L2 dist in pixel space is related to pixel similarity.
+
+![](nn_in_feature_space.png)
+
+### Activation Visualization
+
+We can also look at activation values (here one filter in one layer seems to be activated at neurons over the persons face):
+
+![](vis_act.png)
+
+### Occlusion Experiments
+
+![](occl-exp.png)
+
+### Saliency Maps
+
+Gradient of unnormalized class score with respect to image pixels, take absolute value and max over RGB channels
+
+![](saliency1.png)
+
+![](saliency2.png)
+
+Can be used for segmentation without supervision
+
+![](saliency_segm.png)
+
+### Dimensionality Reduction
+
+- **PCA** (Principal Component Analysis)
+- **t-SNE** (t-distributed stochastic neighbor embedding)
+
+### Guided Backpropagation
+
+Only backprop positive gradients through each ReLU. This way we only keep track of positive influences throughout the network → Images come out nicer
+
+Collect maximally activating patches, then run guided backprop to find pixels that maximally affect the label
+![](guided-backprop.png)
+
+### Synthesizing images with Gradient Ascent
+
+Use gradient ascent (with a natural image regularizer) to maximize neuron value/label value of a synthetic image.
+
+![](gradient-ascent.png)
+
+By adding additional priors we can generate more realistic images.
+
+![](opt-latent.png)
+
+### Deep Dream
+
+Amplify activations of entire layer of neurons by performing gradient descent on the image.
+
++ jiggle image as regularization to increase spatial smoothness
+
+![](deep-dream.png)
+
+### Feature inversion
+
+Reconstruct image from feature vector at a specific layer
+
+![](feature-inversion.png)
+
+![](feature-inversion2.png)
+
+### Neural Texture Synthesis
+
+**Gram Matrix**: pick two feature vectors of shape (W*H), matrix product create co-occurrence matrix between different features. Then take the average of this matrix over all these w, h feature vector pairs
+
+Use gram matrices for neural texture synthesis: pass target image through cnn and compute gram matrix. Then use gradient descent to train new image to have a similar gram matrix. (Or use weighted average of multiple gram matrices at different layers)
+
+![](gram-matrix.png)
+
+### Neural Style Transfer
+
+combines feature inversion and neural texture synthesis (gram matrices) to apply a given style to a content image
+
+Pass style image through network to get gram matrices
+Pass content image to get features
+
+Then run feature inversion and neural texture synthesis in parallel
+
+![](neural-style-transfer.png)
+
+![](nst.png)
+
+![](nst2.png)
+
+- We can also use multiple scale images
+
+- Fast style transfer: train neural network to do style transfer in one step instead of needing to do thousands of forward and backward passes for each image
+
+## Generative Models
+
+Unsupervised learning
+
+- clustering
+- dimensionality reduction
+- feature learning (e.g. autoencoders)
+- density estimation (approximate prob. density function of distribution based on data)
+
+**Generative Models (density estimation)**
+Given training data ~ p_data, generate new samples from distribution p_model
+
+where p_data ≈ p_model
+
+<ul>
+    <li>Explicit density estimation: explicitly define and solve for p_model</li>
+    <li>Implicit density estimation: Learn model that can sample from p_model but does not explicitly define the distribution.</li>
+</ul>
+
+Why generative models:
+
+- generating images, artwork, audio samples
+- generative models of time-series data can be used for simulation and planning (reinforcement learning applications)
+- generating data from latent representations
+
+![](generative-taxonomy.png)
+
+### Fully visible belief network (explicit density)
+
+Use chain rule for probabilities to decompose the likelihood of an image into a product of 1d distributions.
+
+**PixelRNN** defines the tractable density function:
+
+$p(x) = \prod_{i=1}^n p(x_i | x_1, \ldots, x_{i-1})$
+Then learn to generate the image pixel by pixel (computes probability distribution over all pixel intensities)
+
+![](pixelrnn.png) 
+
+PixelCNN:
+
+still generate image pixels sequentially but don't use an RNN and instead use a CNN to look at the context region around the next pixel.
+
+![](pixelcnn.png)
+
+For both PixelRNN and PixelCNN density estimation is explicit because the network predicts a probability distribution of possible values for each pixel and by the chain rule for the entire image. 
+
+### Variational Autoencoders
+
+**General Autoencoders:**
+Autoencoders allow us to take advantage of large amount of unlabeled data and carry over this knowledge to smaller supervised tasks.
+
+<ol>
+    <li>Train autoencoder on a large amount of unlabeled data</li>
+    <li>Throw away decoder</li>
+    <li>Train classifier on top of the (feature) encoder with smaller amount of labeled data. (and possibly finetune encoder)</li>
+</ol>
+
+**Variational Autoencoders** (probabilistic spin to traditional autoencoders)
+define intractable density function with latent $z$ (expectation over all possible values of $z$)
+$$
+p_\theta(x) = \int p_\theta(z) p_\theta(x|z)dz
+$$
+
+(this integral is intractable because we cannot sum over *all* $z$)
+
+Instead optimize variational lower bound ("ELBO")
+
+→ See lecture for exact discussion and derivations
+
+### Generative Adversarial Networks
+
+GANs allow us to sample directly from the (implicit) distribution without modelling it explicitly. Trained through a 2-player game.
+
+Instead of sampleing from a complex high dimensional distribution, sample from a simpler one and transform it into a complex one using a neural network
+
+![](gan.png)
+
+To train a GAN we alternate between the generator and discriminator objective.
+
+![](gan-overview.png)
+
+We want to minimize the generator objective in the graph above. Unfortunately we only get a strong gradient when the generator is already very good. Instead optimize the following objective
+
+![](gan-gobjective.png)
+
+We are able to do interpolation and interpretable vector math with latent vectors.
+
+## Deep Reinforcement Learning
+
+### Markov Decision Process $(\mathcal{S, A, R}, \mathbb{P}, \gamma)$
+
+<ul>
+    <li>$\mathcal{S}$ set of possible states</li>
+    <li>$\mathcal{A}$ set of possible actions</li>
+    <li>$\mathcal{R}$ distribution of reward given for (state, action) pair</li>
+    <li>$\mathbb{P}$ transition probability i.e. distribution over next states given current (state, action) pair</li>
+    <li>$\gamma$ discount factor</li>
+</ul>
+
+satisfies the Markov property
+
+A **policy** is a function $\pi\colon \mathcal{S}→\mathcal{A}$
+The **optimal policy** $\pi^\ast$ maximizes the cumulative future discounted reward
+$$
+\pi^\ast = \arg \max_\pi \Bigg[\sum_{t\ge 0}\gamma^t r_t|\pi \Bigg]
+$$
+with $s_0\sim p(s_0), a_t\sim\pi(\cdot|s_t), s_{t+1}\sim p(\cdot|s_t, a_t)$.
+
+**Trajectory:** $s_0, a_0, r_0, s_1, a_1, r_1,\ldots$
+
+**Value function** at state $s$ is the expected cumulative reward from following the policy from state $s$.
+$$
+V^\pi(s) = \mathbb{E}\Bigg[\sum_{t\ge0} \gamma^t r_t | s_0 = s, \pi\Bigg]
+$$
+**Q-value function** at state $s$ and action $a$ is the expected cumulative reward from taking action $a$ and the following the policy
+$$
+Q^\pi(s, a) = \mathbb{E}\Bigg[\sum_{t\ge0} \gamma^t r_t | s_0 = s, a_0=a, \pi\Bigg]
+$$
+The **optimal Q-value function** is the maximum cumulative reward achievable from taking action $a$ and then following a policy.
+$$
+Q^\ast(s, a) = \max_\pi \mathbb{E}\Bigg[\sum_{t\ge0} \gamma^t r_t | s_0 = s, a_0=a, \pi\Bigg]
+$$
+$Q^\ast$ satisfies the **Bellman equation**
+$$
+Q^\ast(s,a) = \mathbb{E}_{s'\sim\epsilon}[r-\gamma\max_{a'} Q^\ast(s', a')|s, a]
+$$
+If the optimal state-action values for the next step $Q^\ast(s', a')$ are known then the optimal strategy is to take the action that maximizes the expected value of $r+\gamma Q^\ast(s', a')$
+
